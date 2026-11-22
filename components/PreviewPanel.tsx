@@ -14,12 +14,14 @@ interface Props {
   settings: EditorSettings;
   /** true mientras el lote está corriendo: el preview se pausa. */
   processing: boolean;
+  /** true cuando el panel llena el escenario central a pantalla completa. */
+  fill?: boolean;
 }
 
 /** Retraso para regenerar la preview al cambiar la configuración. */
 const PREVIEW_DEBOUNCE_MS = 300;
 
-export default function PreviewPanel({ items, selectedId, onSelect, settings, processing }: Props) {
+export default function PreviewPanel({ items, selectedId, onSelect, settings, processing, fill }: Props) {
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
   const [mode, setMode] = useState<ViewMode>("slider");
   const [pos, setPos] = useState(50);
@@ -106,7 +108,13 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
   };
 
   return (
-    <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section
+      className={
+        fill
+          ? "flex h-full min-h-0 flex-col overflow-y-auto bg-slate-100 p-3 sm:p-4"
+          : "mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold text-slate-900">👁️ Vista previa en vivo</h2>
         {items.length > 1 && (
@@ -179,6 +187,12 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
         </p>
       )}
 
+      {fill && !result && !error && !processing && (
+        <div className="mt-3 flex min-h-60 flex-1 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-sm font-medium text-slate-500">
+          Generando vista previa…
+        </div>
+      )}
+
       {result && !error && (
         <>
           {/* Botones de vista: Antes / Después / Comparar */}
@@ -208,7 +222,9 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
 
           {/* Comparador: original a la izquierda, procesada a la derecha */}
           <div
-            className="relative mt-3 h-72 w-full cursor-ew-resize touch-none overflow-hidden rounded-lg bg-slate-100 select-none sm:h-96"
+            className={`relative mt-3 w-full cursor-ew-resize touch-none overflow-hidden rounded-lg select-none ${
+              fill ? "min-h-60 flex-1 bg-slate-200" : "h-72 bg-slate-100 sm:h-96"
+            }`}
             onPointerDown={(e) => {
               if (mode !== "slider") return;
               setPosFromPointer(e);

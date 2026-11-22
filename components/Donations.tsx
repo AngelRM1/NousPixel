@@ -23,7 +23,7 @@ const DONATION_LINKS = [
   },
 ] as const;
 
-export default function Donations() {
+export default function Donations({ compact }: { compact?: boolean }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyLink = async (id: string, url: string) => {
@@ -39,7 +39,7 @@ export default function Donations() {
 
   return (
     <section
-      className="mt-10 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center shadow-sm"
+      className={`${compact ? "" : "mt-10 "}rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center shadow-sm`}
       aria-label="Apoya NousPixel con una donación"
     >
       <h2 className="text-lg font-bold text-slate-900">💛 Apoya NousPixel</h2>

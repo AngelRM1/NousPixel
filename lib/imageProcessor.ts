@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { computeMask, maskToCanvas } from "./backgroundRemoval";
 import {
   COMPRESSION_QUALITY,
   type CropRatio,
@@ -7,6 +8,16 @@ import {
   type ImageItem,
   type OutputFormat,
 } from "./types";
+
+/**
+ * Formato real de salida: quitar fondo fuerza PNG, porque JPG no admite
+ * transparencia (si el usuario eligió JPG con quitar fondo, la salida es
+ * PNG y se le avisa en la UI).
+ */
+export function effectiveFormat(settings: EditorSettings): OutputFormat {
+  if (settings.removeBackground && settings.format === "jpeg") return "png";
+  return settings.format;
+}
 
 export const FORMAT_MIME: Record<OutputFormat, string> = {
   avif: "image/avif",
@@ -135,6 +146,18 @@ async function loadBitmap(file: File): Promise<ImageBitmap> {
   return createImageBitmap(file);
 }
 
+/** Misma transformación (centro, rotación, volteo) para foto y máscara. */
+function applyTransform(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  settings: EditorSettings,
+): void {
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate((settings.rotation * Math.PI) / 180);
+  ctx.scale(settings.flipH ? -1 : 1, settings.flipV ? -1 : 1);
+}
+
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   mime: string,
@@ -187,14 +210,11 @@ export async function processImage(
   item: ImageItem,
   settings: EditorSettings,
   outputNameOverride?: string,
-): Promise<{ blob: Blob; name: string; width: number; height: number }> {
-  if (settings.removeBackground) {
-    throw new Error(
-      "Quitar fondo no está disponible en esta versión: requiere descargar el modelo de IA (~40 MB) y aún no está integrado. Desactívalo para procesar esta imagen.",
-    );
-  }
+): Promise<{ blob: Blob; name: string; width: number; height: number; format: OutputFormat }> {
+  // Quitar fondo fuerza PNG (JPG no admite transparencia).
+  const format = effectiveFormat(settings);
   const { width, height } = targetDimensions(item.width, item.height, settings);
-  const mime = FORMAT_MIME[settings.format];
+  const mime = FORMAT_MIME[format];
   const quality = COMPRESSION_QUALITY[settings.compression];
 
   let bitmap: ImageBitmap;
@@ -206,6 +226,17 @@ export async function processImage(
     );
   }
 
+  // Máscara de fondo (si está activada): se calcula ANTES de dibujar,
+  // sobre la región recortada de la imagen original. Si el modelo no se
+  // puede descargar o la inferencia falla, el error se propaga y esta
+  // imagen se marca con su motivo, sin detener el resto del lote.
+  const src = cropSource(item.width, item.height, settings.crop);
+  let maskCanvas: HTMLCanvasElement | null = null;
+  if (settings.removeBackground) {
+    const mask = await computeMask(bitmap, src);
+    maskCanvas = maskToCanvas(mask);
+  }
+
   try {
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -213,24 +244,34 @@ export async function processImage(
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("No se pudo crear el lienzo de dibujo en este navegador.");
 
-    // Fondo para JPG (sin canal alfa).
-    if (settings.format === "jpeg") {
+    // Fondo para JPG (sin canal alfa). Con quitar fondo la salida es PNG.
+    if (format === "jpeg") {
       ctx.fillStyle = settings.backgroundColor || "#ffffff";
       ctx.fillRect(0, 0, width, height);
     }
 
-    const src = cropSource(item.width, item.height, settings.crop);
     // Dimensiones de dibujo antes de rotar (intercambiadas si rota 90/270).
     const drawW = settings.rotation === 90 || settings.rotation === 270 ? height : width;
     const drawH = settings.rotation === 90 || settings.rotation === 270 ? width : height;
 
     ctx.save();
     ctx.filter = buildFilter(settings);
-    ctx.translate(width / 2, height / 2);
-    ctx.rotate((settings.rotation * Math.PI) / 180);
-    ctx.scale(settings.flipH ? -1 : 1, settings.flipV ? -1 : 1);
+    applyTransform(ctx, width, height, settings);
     ctx.drawImage(bitmap, src.sx, src.sy, src.sw, src.sh, -drawW / 2, -drawH / 2, drawW, drawH);
     ctx.restore();
+
+    // Aplicar la máscara con la misma transformación: destination-in
+    // multiplica el alfa por la máscara (fondo → transparente).
+    if (maskCanvas) {
+      ctx.save();
+      ctx.filter = "none";
+      ctx.globalCompositeOperation = "destination-in";
+      applyTransform(ctx, width, height, settings);
+      ctx.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+      maskCanvas.width = 0;
+      maskCanvas.height = 0;
+    }
 
     // Velo de color de los presets frío/cálido/vintage.
     const overlay = presetOverlay(settings);
@@ -272,26 +313,27 @@ export async function processImage(
 
     // Detección de codificación no soportada.
     if (blob.type !== mime) {
-      if (settings.format === "gif") {
+      if (format === "gif") {
         throw new Error(
           "GIF no se puede generar desde el navegador (Canvas no codifica GIF). Elige PNG o WebP como salida.",
         );
       }
-      if (settings.format === "avif") {
+      if (format === "avif") {
         throw new Error(
           "AVIF no está soportado por este navegador para exportar. Prueba con WebP o JPG, o usa Chrome/Edge actualizado.",
         );
       }
       throw new Error(
-        `Este navegador no puede exportar a ${settings.format.toUpperCase()} (devolvió ${blob.type || "otro formato"}).`,
+        `Este navegador no puede exportar a ${format.toUpperCase()} (devolvió ${blob.type || "otro formato"}).`,
       );
     }
 
     return {
       blob,
-      name: outputNameOverride ?? outputName(item.file.name, settings.format),
+      name: outputNameOverride ?? outputName(item.file.name, format),
       width,
       height,
+      format,
     };
   } finally {
     bitmap.close();

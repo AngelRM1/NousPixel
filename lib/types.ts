@@ -78,10 +78,10 @@ export interface EditorSettings {
   /** Color de fondo para JPG (sin transparencia). Blanco por defecto. */
   backgroundColor: string;
   /**
-   * Quitar fondo: desactivado por defecto. NO implementado en esta versión
-   * (ver README): requiere descargar el modelo ONNX de
-   * @imgly/background-removal (~40 MB). Si está activado, cada imagen se
-   * marca con ese error antes de procesar y se excluye del lote.
+   * Quitar fondo con IA (ISNet int8, Apache-2.0, en el navegador):
+   * desactivado por defecto. La primera vez descarga el modelo (~44 MB,
+   * una sola vez, queda en caché); si el formato es JPG la salida se
+   * fuerza a PNG (JPG no admite transparencia). Ver lib/backgroundRemoval.ts.
    */
   removeBackground: boolean;
   rename: RenameSettings;

@@ -16,12 +16,14 @@ interface Props {
   processing: boolean;
   /** true cuando el panel llena el escenario central a pantalla completa. */
   fill?: boolean;
+  /** true en el acordeón móvil: sin tarjeta, borde ni márgenes. */
+  bare?: boolean;
 }
 
 /** Retraso para regenerar la preview al cambiar la configuración. */
 const PREVIEW_DEBOUNCE_MS = 300;
 
-export default function PreviewPanel({ items, selectedId, onSelect, settings, processing, fill }: Props) {
+export default function PreviewPanel({ items, selectedId, onSelect, settings, processing, fill, bare }: Props) {
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
   const [mode, setMode] = useState<ViewMode>("slider");
   const [pos, setPos] = useState(50);
@@ -112,7 +114,9 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
       className={
         fill
           ? "flex h-full min-h-0 flex-col overflow-y-auto bg-slate-100 p-3 sm:p-4"
-          : "mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          : bare
+            ? "flex flex-col px-4 py-3"
+            : "mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
       }
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

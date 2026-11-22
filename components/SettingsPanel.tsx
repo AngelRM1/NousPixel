@@ -501,7 +501,7 @@ export default function SettingsPanel({ settings, onChange, disabled }: Props) {
         </div>
       </Section>
 
-      <Section title="🧩 Quitar fondo" hint="Desactivado — no disponible en esta versión">
+      <Section title="🧩 Quitar fondo" hint="Desactivado por defecto — IA en tu navegador">
         <label className="flex items-start gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -513,12 +513,19 @@ export default function SettingsPanel({ settings, onChange, disabled }: Props) {
           <span>
             Quitar el fondo automáticamente (IA en el navegador)
             <span className="block text-xs text-slate-500">
-              Aún no está integrado: requiere descargar el modelo de IA (~40 MB) la primera vez
-              y puede tardar varios segundos por imagen. Si lo activas, las imágenes se marcarán
-              con ese error y se excluirán del lote, sin detener las demás. Ver README.
+              La primera vez descarga el modelo de IA (ISNet, ~44 MB, una sola vez, queda
+              guardado en tu navegador) y puede tardar varios segundos por imagen. La
+              inferencia es local: tus imágenes nunca salen de tu dispositivo. Si el
+              formato de salida es JPG, la salida se fuerza a PNG para conservar la
+              transparencia.
             </span>
           </span>
         </label>
+        {settings.removeBackground && settings.format === "jpeg" && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+            ⚠️ Con quitar fondo activado, JPG no admite transparencia: la salida será PNG.
+          </p>
+        )}
       </Section>
     </section>
   );

@@ -2,22 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Donations from "@/components/Donations";
-import ImageList from "@/components/ImageList";
+import ImagesPanelContent from "@/components/ImagesPanelContent";
 import PreviewPanel from "@/components/PreviewPanel";
-import RenamePanel from "@/components/RenamePanel";
-import SettingsPanel from "@/components/SettingsPanel";
-import UploadArea from "@/components/UploadArea";
+import SettingsPanelContent from "@/components/SettingsPanelContent";
 import {
   ensureModel,
-  MODEL_NAME,
-  MODEL_SIZE_LABEL,
-  resetBackgroundModel,
   subscribeModelStatus,
   type ModelStatus,
 } from "@/lib/backgroundRemoval";
 import { checkOutputSupport, downloadResults, effectiveFormat, processImage } from "@/lib/imageProcessor";
 import {
-  formatEstimatedTime,
   individualIssuesOf,
   NO_PROGRESS_MS,
   summarizeBatch,
@@ -25,7 +19,6 @@ import {
 import { buildRenamedName, parseStart, renamePreview } from "@/lib/rename";
 import {
   DEFAULT_SETTINGS,
-  formatBytes,
   SLOW_IMAGE_MS,
   SLOW_TOTAL_MS,
   type EditorSettings,
@@ -48,6 +41,45 @@ async function readDimensions(file: File): Promise<{ width: number; height: numb
 function formatElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Sección colapsable del acordeón móvil: encabezado siempre visible. */
+function MobileSection({
+  title,
+  badge,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  badge?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+      >
+        <span className="text-base font-bold text-slate-900">{title}</span>
+        <span className="flex shrink-0 items-center gap-2">
+          {badge && (
+            <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-bold text-cyan-800">
+              {badge}
+            </span>
+          )}
+          <span className="text-lg leading-none text-slate-500" aria-hidden>
+            {open ? "▾" : "▸"}
+          </span>
+        </span>
+      </button>
+      {open && <div className="border-t border-slate-100">{children}</div>}
+    </section>
+  );
 }
 
 export default function Home() {
@@ -78,6 +110,48 @@ export default function Home() {
       setRightOpen(false);
     }
   }, []);
+
+  // Responsivo (<1024 px): la página se apila en una sola columna con
+  // secciones colapsables (acordeón móvil). El escritorio no cambia.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  /** Acordeón móvil: cada sección se abre/cierra por separado. */
+  const [mobileOpen, setMobileOpen] = useState({
+    images: true,
+    settings: false,
+    preview: false,
+  });
+  /** La preview solo se auto-abre una vez por lote, si el usuario no la cerró. */
+  const previewDismissedRef = useRef(false);
+  const prevItemsCountRef = useRef(0);
+  const toggleMobile = useCallback((key: "images" | "settings" | "preview") => {
+    if (key === "preview") {
+      if (mobileOpen.preview) previewDismissedRef.current = true;
+      else previewDismissedRef.current = false;
+    }
+    setMobileOpen((m) => ({ ...m, [key]: !m[key] }));
+  }, [mobileOpen.preview]);
+
+  // Al cargar las primeras imágenes, abrir sola la sección Preview, sin
+  // cerrar la que el usuario está usando (el acordeón permite varias abiertas).
+  useEffect(() => {
+    const prev = prevItemsCountRef.current;
+    prevItemsCountRef.current = items.length;
+    if (items.length === 0) {
+      previewDismissedRef.current = false;
+      return;
+    }
+    if (prev === 0 && !previewDismissedRef.current) {
+      setMobileOpen((m) => ({ ...m, preview: true }));
+    }
+  }, [items.length]);
 
   // Seguir el estado del modelo de quitar fondo (descarga, listo o error).
   useEffect(() => subscribeModelStatus(setModelStatus), []);
@@ -402,7 +476,8 @@ export default function Home() {
         </p>
       </header>
 
-      <div className="relative min-h-0 flex-1">
+      {!isMobile && (
+        <div className="relative min-h-0 flex-1">
         {/* Escenario central: la vista previa ocupa toda la pantalla */}
         <div
           className={`absolute inset-0 transition-all duration-300 ${leftOpen ? "lg:pl-[364px]" : ""} ${rightOpen ? "lg:pr-[364px]" : ""}`}
@@ -466,281 +541,32 @@ export default function Home() {
             leftOpen ? "translate-x-0" : "-translate-x-[calc(100%+1rem)]"
           }`}
         >
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-slate-900">🖼 Imágenes</h2>
-              <button
-                type="button"
-                onClick={() => setLeftOpen(false)}
-                className="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100"
-                aria-label="Ocultar panel de imágenes"
-              >
-                ‹ Ocultar
-              </button>
-            </div>
-
-            <div className="mt-3">
-              <UploadArea onFiles={addFiles} disabled={processing} />
-            </div>
-
-            {items.length > 0 && (
-              <>
-                {/* Resumen del lote: cálculo previo, siempre visible */}
-                {!processing && (
-                  <div
-                    className={`mt-4 rounded-2xl border p-4 ${
-                      batchSummary.semaphore === "rojo"
-                        ? "border-red-300 bg-red-50"
-                        : batchSummary.semaphore === "ambar"
-                          ? "border-amber-300 bg-amber-50"
-                          : "border-emerald-300 bg-emerald-50"
-                    }`}
-                    role="status"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-bold text-slate-800">📋 Resumen del lote</p>
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-bold text-white ${
-                          batchSummary.semaphore === "rojo"
-                            ? "bg-red-600"
-                            : batchSummary.semaphore === "ambar"
-                              ? "bg-amber-600"
-                              : "bg-emerald-600"
-                        }`}
-                      >
-                        {batchSummary.semaphore === "rojo"
-                          ? "🔴 Límite excedido"
-                          : batchSummary.semaphore === "ambar"
-                            ? "🟡 Lote pesado"
-                            : "🟢 Listo, lote ligero"}
-                      </span>
-                    </div>
-
-                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-slate-700">
-                      <div>
-                        <dt className="font-semibold">Imágenes</dt>
-                        <dd>
-                          {batchSummary.count} cargadas · {batchSummary.candidates.length} válidas
-                          para procesar
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold">Tamaño total</dt>
-                        <dd>{formatBytes(batchSummary.totalBytes)}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold">Megapíxeles totales</dt>
-                        <dd>{batchSummary.totalMegapixels.toFixed(1)} MP</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold">Memoria est. de decodificación</dt>
-                        <dd>{formatBytes(batchSummary.estimatedDecodeBytes)}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold">Tiempo estimado</dt>
-                        <dd>{formatEstimatedTime(batchSummary.estimatedSeconds)}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold">Límites</dt>
-                        <dd>30 img · 25 MB/img · 200 MB · 200 MP · 100 MP/img</dd>
-                      </div>
-                    </dl>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Estimación: la memoria es ancho × alto × 4 bytes por imagen (Canvas usa
-                      además un búfer de salida del mismo tamaño); el tiempo es ~0,5 s por
-                      megapíxel en escritorio y varía según el dispositivo, el navegador y los
-                      ajustes.
-                    </p>
-
-                    {batchSummary.semaphore === "ambar" && (
-                      <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800">
-                        Este lote puede tardar: si quieres que vaya más rápido, baja la
-                        resolución de salida o divídelo en dos lotes. Puedes iniciar igualmente.
-                      </p>
-                    )}
-                    {batchSummary.semaphore === "rojo" && (
-                      <div className="mt-3" role="alert">
-                        <p className="text-sm font-bold text-red-800">
-                          Iniciar está bloqueado hasta quitar imágenes o dividir el lote:
-                        </p>
-                        <ul className="mt-1 list-disc pl-5 text-sm text-red-800">
-                          {batchSummary.hardIssues.map((issue) => (
-                            <li key={issue}>{issue}</li>
-                          ))}
-                        </ul>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSplitConfirmed(true);
-                            void startProcessing({ split: true });
-                          }}
-                          className="mt-3 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
-                        >
-                          Procesar solo las primeras que caben ({batchSummary.fit.length} de{" "}
-                          {batchSummary.candidates.length})
-                        </button>
-                      </div>
-                    )}
-                    {batchSummary.individualOmitted.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-sm font-bold text-amber-800">
-                          Se omitirán {batchSummary.individualOmitted.length} por superar el
-                          límite por imagen (el resto sigue):
-                        </p>
-                        <ul className="mt-1 list-disc pl-5 text-sm text-amber-800">
-                          {batchSummary.individualOmitted.map(({ item, reasons }) => (
-                            <li key={item.id}>
-                              «{item.file.name}»: {reasons.join("; ")}.
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <ImageList items={items} onRemove={removeItem} disabled={processing} />
-
-                {processing && progress.total > 0 && (
-                  <div className="mt-4 rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-cyan-800">
-                        Procesando {progress.done} de {progress.total}… · ⏱{" "}
-                        {formatElapsed(elapsedMs)}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleCancel}
-                        className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-700"
-                      >
-                        ✕ Cancelar
-                      </button>
-                    </div>
-                    <div className="mt-2 h-3 overflow-hidden rounded-full bg-cyan-100">
-                      <div
-                        className="h-full rounded-full bg-cyan-600 transition-all"
-                        style={{ width: `${(progress.done / progress.total) * 100}%` }}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-cyan-700">
-                      En memoria para el ZIP: {formatBytes(memoryReadyBytes)} ({readyCount}{" "}
-                      resultado
-                      {readyCount === 1 ? "" : "s"} listo{readyCount === 1 ? "" : "s"}). Las
-                      vistas previas se conservan para el comparador; al pulsar «Limpiar» se
-                      libera todo.
-                    </p>
-                    {slow && (
-                      <p
-                        className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800"
-                        role="alert"
-                      >
-                        ⏳ Sigue trabajando, no cierres la pestaña… El procesamiento está
-                        tardando más de lo normal, probablemente por imágenes grandes o muchas
-                        imágenes. Puedes esperar o cancelar: lo ya procesado se conserva y se
-                        puede descargar.
-                      </p>
-                    )}
-                    {heartbeat && !slow && (
-                      <p
-                        className="mt-3 rounded-lg bg-cyan-100 px-3 py-2 text-sm font-medium text-cyan-800"
-                        role="status"
-                      >
-                        💓 Aún procesando… sin progreso visible en los últimos segundos, pero el
-                        proceso sigue en marcha. No cierres la pestaña.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {summary && (
-                  <p
-                    className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-800"
-                    role="status"
-                  >
-                    Resumen: {summary}
-                  </p>
-                )}
-
-                {failedItems.length > 0 && (
-                  <details className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                    <summary className="cursor-pointer text-sm font-bold text-red-800">
-                      Ver motivos de las {failedItems.length} con error
-                    </summary>
-                    <ul className="mt-2 list-disc pl-5 text-xs text-red-700">
-                      {failedItems.map((i) => (
-                        <li key={i.id}>
-                          <span className="font-semibold">{i.file.name}:</span> {i.error}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-
-                {notice && (
-                  <p
-                    className={`mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
-                      notice.startsWith("⚠️")
-                        ? "bg-amber-50 text-amber-800"
-                        : "bg-emerald-50 text-emerald-800"
-                    }`}
-                    role="status"
-                  >
-                    {notice}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Acciones siempre visibles al pie del panel izquierdo */}
-          <div className="shrink-0 border-t border-slate-200 bg-white/90 p-4">
-            <button
-              type="button"
-              onClick={() => void startProcessing()}
-              disabled={processing || batchSummary.candidates.length === 0 || batchSummary.blocked}
-              title={
-                batchSummary.blocked
-                  ? "Límite excedido: quita imágenes o usa «Procesar solo las primeras que caben»"
-                  : undefined
-              }
-              className="w-full rounded-xl bg-cyan-600 px-6 py-3 text-base font-bold text-white shadow hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {processing ? "Procesando…" : "▶ Iniciar"}
-            </button>
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={handleDownload}
-                disabled={processing || readyCount === 0}
-                className="flex-1 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ⬇ Descargar {items.length > 1 ? "ZIP" : "imagen"}
-                {readyCount > 0 ? ` (${readyCount})` : ""}
-              </button>
-              <button
-                type="button"
-                onClick={clearAll}
-                disabled={processing}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              >
-                Limpiar
-              </button>
-            </div>
-            <p className="mt-2 text-center text-[11px] text-slate-500">
-              Con 1 imagen se descarga el archivo directo; con varias, un ZIP con todas las
-              procesadas.
-            </p>
-            <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-              <button
-                type="button"
-                onClick={() => setShowDonations(true)}
-                className="text-sm font-bold text-amber-600 hover:underline"
-              >
-                💛 Apoyar NousPixel
-              </button>
-              <span className="text-[10px] text-slate-400">Next.js + Canvas + JSZip</span>
-            </div>
-          </div>
+          <ImagesPanelContent
+            items={items}
+            batchSummary={batchSummary}
+            processing={processing}
+            progress={progress}
+            elapsedLabel={formatElapsed(elapsedMs)}
+            slow={slow}
+            heartbeat={heartbeat}
+            summary={summary}
+            notice={notice}
+            failedItems={failedItems}
+            readyCount={readyCount}
+            memoryReadyBytes={memoryReadyBytes}
+            onAddFiles={addFiles}
+            onRemoveItem={removeItem}
+            onStart={() => void startProcessing()}
+            onSplit={() => {
+              setSplitConfirmed(true);
+              void startProcessing({ split: true });
+            }}
+            onCancel={handleCancel}
+            onDownload={handleDownload}
+            onClear={clearAll}
+            onShowDonations={() => setShowDonations(true)}
+            onHide={() => setLeftOpen(false)}
+          />
         </aside>
 
         {/* Panel derecho flotante: configuraciones */}
@@ -750,114 +576,15 @@ export default function Home() {
             rightOpen ? "translate-x-0" : "translate-x-[calc(100%+1rem)]"
           }`}
         >
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-slate-900">⚙️ Ajustes</h2>
-              <button
-                type="button"
-                onClick={() => setRightOpen(false)}
-                className="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100"
-                aria-label="Ocultar panel de ajustes"
-              >
-                Ocultar ›
-              </button>
-            </div>
-
-            {items.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">
-                Carga imágenes para ajustar el formato, la resolución, la compresión, quitar
-                el fondo, recortar, rotar, aplicar filtros, renombrar por lote y añadir marca
-                de agua.
-              </p>
-            ) : (
-              <>
-                <div className="mt-3">
-                  <SettingsPanel settings={settings} onChange={setSettings} disabled={processing} />
-                </div>
-
-                {/* Estado del modelo de quitar fondo (solo si está activado) */}
-                {settings.removeBackground && (
-                  <div
-                    className={`mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
-                      modelStatus.state === "error"
-                        ? "bg-red-50 text-red-800"
-                        : modelStatus.state === "ready"
-                          ? "bg-emerald-50 text-emerald-800"
-                          : "bg-cyan-50 text-cyan-800"
-                    }`}
-                    role="status"
-                  >
-                    {modelStatus.state === "downloading" && (
-                      <p>
-                        ⬇ Descargando el modelo de quitar fondo ({MODEL_NAME},{" "}
-                        {MODEL_SIZE_LABEL}, una sola vez)… {modelStatus.progress} % — las
-                        imágenes nunca salen de tu dispositivo; solo se descarga el modelo.
-                      </p>
-                    )}
-                    {modelStatus.state === "downloading" && (
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-cyan-100">
-                        <div
-                          className="h-full rounded-full bg-cyan-600 transition-all"
-                          style={{ width: `${modelStatus.progress}%` }}
-                        />
-                      </div>
-                    )}
-                    {modelStatus.state === "ready" && (
-                      <p>
-                        ✅ Modelo de quitar fondo listo ({MODEL_NAME}). La inferencia es local y
-                        puede tardar varios segundos por imagen.
-                      </p>
-                    )}
-                    {modelStatus.state === "error" && (
-                      <div>
-                        <p>
-                          ⚠️ {modelStatus.error ?? "No se pudo preparar el modelo de quitar fondo."}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetBackgroundModel();
-                            ensureModel().catch(() => {});
-                          }}
-                          className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-700"
-                        >
-                          ↻ Reintentar descarga
-                        </button>
-                      </div>
-                    )}
-                    {modelStatus.state === "idle" && (
-                      <p>
-                        🧩 Quitar fondo activado: el modelo ({MODEL_NAME}, {MODEL_SIZE_LABEL}) se
-                        descargará una sola vez al procesar la primera imagen.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <RenamePanel
-                  settings={settings}
-                  onChange={setSettings}
-                  disabled={processing}
-                  previewNames={renameInfo.names}
-                  previewError={renameInfo.error}
-                />
-
-                <div className="mt-4 border-t border-slate-200 pt-3 text-[11px] leading-relaxed text-slate-400">
-                  <p>Tus imágenes nunca salen de tu dispositivo.</p>
-                  <p className="mt-1">
-                    Limitación conocida: Canvas no puede exportar GIF y AVIF depende del
-                    navegador — si un formato no está soportado, esa imagen mostrará el error
-                    sin romper el resto.
-                  </p>
-                  <p className="mt-1">
-                    Quitar fondo: modelo ISNet general-use int8 (ORMBG, Apache-2.0, de Qin et
-                    al. 2022) · ONNX Runtime Web (MIT). Sin @imgly/background-removal ni RMBG
-                    de BRIA.
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
+          <SettingsPanelContent
+            items={items}
+            settings={settings}
+            onSettingsChange={setSettings}
+            processing={processing}
+            modelStatus={modelStatus}
+            renameInfo={renameInfo}
+            onHide={() => setRightOpen(false)}
+          />
         </aside>
 
         {/* Pestañas en el borde para reabrir los paneles (escritorio) */}
@@ -901,7 +628,117 @@ export default function Home() {
             ⚙ Ajustes
           </button>
         )}
-      </div>
+        </div>
+      )}
+
+      {isMobile && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-3 py-3">
+              <MobileSection
+                title="🖼 Tus imágenes"
+                badge={
+                  items.length > 0
+                    ? `${items.length} cargada${items.length === 1 ? "" : "s"}`
+                    : undefined
+                }
+                open={mobileOpen.images}
+                onToggle={() => toggleMobile("images")}
+              >
+                <ImagesPanelContent
+                  items={items}
+                  batchSummary={batchSummary}
+                  processing={processing}
+                  progress={progress}
+                  elapsedLabel={formatElapsed(elapsedMs)}
+                  slow={slow}
+                  heartbeat={heartbeat}
+                  summary={summary}
+                  notice={notice}
+                  failedItems={failedItems}
+                  readyCount={readyCount}
+                  memoryReadyBytes={memoryReadyBytes}
+                  onAddFiles={addFiles}
+                  onRemoveItem={removeItem}
+                  onStart={() => void startProcessing()}
+                  onSplit={() => {
+                    setSplitConfirmed(true);
+                    void startProcessing({ split: true });
+                  }}
+                  onCancel={handleCancel}
+                  onDownload={handleDownload}
+                  onClear={clearAll}
+                  onShowDonations={() => setShowDonations(true)}
+                />
+              </MobileSection>
+
+              <MobileSection
+                title="⚙️ Configuración"
+                open={mobileOpen.settings}
+                onToggle={() => toggleMobile("settings")}
+              >
+                <SettingsPanelContent
+                  items={items}
+                  settings={settings}
+                  onSettingsChange={setSettings}
+                  processing={processing}
+                  modelStatus={modelStatus}
+                  renameInfo={renameInfo}
+                />
+              </MobileSection>
+
+              <MobileSection
+                title="👁️ Preview"
+                open={mobileOpen.preview}
+                onToggle={() => toggleMobile("preview")}
+              >
+                {items.length === 0 ? (
+                  <p className="px-4 py-4 text-sm text-slate-500">
+                    Carga imágenes en «Tus imágenes» y aquí verás el antes y el
+                    después con tus ajustes en tiempo real.
+                  </p>
+                ) : (
+                  <PreviewPanel
+                    items={items}
+                    selectedId={previewSelectedId}
+                    onSelect={setPreviewId}
+                    settings={settings}
+                    processing={processing}
+                    bare
+                  />
+                )}
+              </MobileSection>
+
+              <p className="pb-2 text-center text-xs text-slate-400">
+                Tus imágenes nunca salen de tu dispositivo · NousPixel por NousLogic
+              </p>
+            </div>
+          </div>
+
+          {items.length > 0 && (
+            <div className="shrink-0 border-t border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur">
+              <div className="mx-auto flex max-w-2xl gap-2">
+                <button
+                  type="button"
+                  onClick={() => void startProcessing()}
+                  disabled={processing || batchSummary.candidates.length === 0 || batchSummary.blocked}
+                  className="flex-1 rounded-xl bg-cyan-600 px-6 py-3 text-base font-bold text-white shadow hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {processing ? "Procesando…" : "▶ Iniciar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  disabled={processing || readyCount === 0}
+                  className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ⬇ Descargar{readyCount > 0 ? ` (${readyCount})` : ""}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal de donaciones (la sección completa, fuera de la vista previa) */}
       {showDonations && (

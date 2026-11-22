@@ -1,11 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Donations from "@/components/Donations";
 import ImageList from "@/components/ImageList";
+import PreviewPanel from "@/components/PreviewPanel";
 import RenamePanel from "@/components/RenamePanel";
 import SettingsPanel from "@/components/SettingsPanel";
 import UploadArea from "@/components/UploadArea";
-import { checkOutputSupport, downloadResults, processImage } from "@/lib/imageProcessor";
+import {
+  ensureModel,
+  MODEL_NAME,
+  MODEL_SIZE_LABEL,
+  resetBackgroundModel,
+  subscribeModelStatus,
+  type ModelStatus,
+} from "@/lib/backgroundRemoval";
+import { checkOutputSupport, downloadResults, effectiveFormat, processImage } from "@/lib/imageProcessor";
 import {
   formatEstimatedTime,
   individualIssuesOf,
@@ -51,6 +61,26 @@ export default function Home() {
   const [heartbeat, setHeartbeat] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [splitConfirmed, setSplitConfirmed] = useState(false);
+  /** Imagen elegida para la vista previa (null = la primera cargada). */
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  /** Estado del modelo de quitar fondo (descarga ~44 MB, una sola vez). */
+  const [modelStatus, setModelStatus] = useState<ModelStatus>({ state: "idle", progress: 0 });
+
+  // Seguir el estado del modelo de quitar fondo (descarga, listo o error).
+  useEffect(() => subscribeModelStatus(setModelStatus), []);
+
+  // Al activar quitar fondo, empezar a descargar el modelo en segundo
+  // plano para que no espere al pulsar Iniciar.
+  useEffect(() => {
+    if (settings.removeBackground) {
+      ensureModel().catch(() => {
+        // El error queda en modelStatus y se muestra en el aviso; el lote
+        // lo reflejará por imagen sin detenerse.
+      });
+    }
+    // Solo interesa el cambio del toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.removeBackground]);
 
   const cancelRef = useRef(false);
   const startTimeRef = useRef(0);
@@ -130,7 +160,13 @@ export default function Home() {
     setNotice(null);
     setSummary(null);
     setSplitConfirmed(false);
+    setPreviewId(null);
   }, [items]);
+
+  /** Imagen de la vista previa: la elegida, o la primera si se quitó. */
+  const previewSelectedId = items.some((i) => i.id === previewId)
+    ? previewId
+    : (items[0]?.id ?? null);
 
   /* ---------- Resumen del lote (cálculo previo, siempre visible) ---------- */
   const batchSummary = useMemo(() => summarizeBatch(items), [items]);
@@ -142,10 +178,12 @@ export default function Home() {
   );
 
   /* ---------- Renombrado: vista previa en vivo ---------- */
+  // Con quitar fondo, JPG se fuerza a PNG: los nombres usan el formato efectivo.
+  const effFormat = useMemo(() => effectiveFormat(settings), [settings]);
   const renameInfo = useMemo(() => {
     const eligible = items.filter((i) => i.status !== "error" && i.status !== "omitido");
-    return renamePreview(settings.rename, settings.format, eligible.length);
-  }, [items, settings.rename, settings.format]);
+    return renamePreview(settings.rename, effFormat, eligible.length);
+  }, [items, settings.rename, effFormat]);
 
   const startProcessing = useCallback(
     async (opts?: { split?: boolean }) => {
@@ -164,7 +202,10 @@ export default function Home() {
 
       // 2) Validación ANTES de procesar (no detiene el lote: marca y excluye).
       let working: ImageItem[] = items.map((i) => ({ ...i }));
-      const outputError = await checkOutputSupport(settings.format);
+      // Con quitar fondo, JPG se fuerza a PNG (transparencia): se valida
+      // el formato efectivo, no el elegido.
+      const outputFormat = effectiveFormat(settings);
+      const outputError = await checkOutputSupport(outputFormat);
       if (outputError) {
         working = working.map((i) =>
           i.status === "pendiente" ? { ...i, status: "error" as const, error: outputError } : i,
@@ -174,17 +215,9 @@ export default function Home() {
         setNotice("⚠️ No se pudo procesar ninguna imagen: el formato de salida no está soportado en este navegador.");
         return;
       }
-      if (settings.removeBackground) {
-        const msg =
-          "Quitar fondo no está disponible en esta versión: requiere descargar el modelo de IA (~40 MB) y aún no está integrado.";
-        working = working.map((i) =>
-          i.status === "pendiente" ? { ...i, status: "error" as const, error: msg } : i,
-        );
-        setItems(working);
-        setSummary(`0 procesadas, ${working.filter((i) => i.status === "error").length} con error. Motivo: ${msg}`);
-        setNotice("⚠️ Quitar fondo está activado pero no disponible: desactívalo para procesar.");
-        return;
-      }
+      // Quitar fondo ya está integrado: si el modelo falla, cada imagen
+      // se marca con su motivo en el proceso (try/catch por imagen) y el
+      // resto del lote continúa. No se bloquea aquí.
       // Imágenes que superan el límite individual (25 MB o 100 MP):
       // omitidas con su motivo exacto, no rompen el lote.
       working = working.map((i) => {
@@ -262,7 +295,7 @@ export default function Home() {
         setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: "procesando" } : i)));
         const renamed =
           settings.rename.enabled && renameOk
-            ? buildRenamedName(settings.rename, startIndex, idx, settings.format)
+            ? buildRenamedName(settings.rename, startIndex, idx, effFormat)
             : undefined;
         try {
           const result = await processImage(item, settings, renamed);
@@ -362,12 +395,77 @@ export default function Home() {
             <SettingsPanel settings={settings} onChange={setSettings} disabled={processing} />
           </div>
 
+          {/* Estado del modelo de quitar fondo (solo si está activado) */}
+          {settings.removeBackground && (
+            <div
+              className={`mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
+                modelStatus.state === "error"
+                  ? "bg-red-50 text-red-800"
+                  : modelStatus.state === "ready"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-cyan-50 text-cyan-800"
+              }`}
+              role="status"
+            >
+              {modelStatus.state === "downloading" && (
+                <p>
+                  ⬇ Descargando el modelo de quitar fondo ({MODEL_NAME}, {MODEL_SIZE_LABEL},
+                  una sola vez)… {modelStatus.progress} % — las imágenes nunca salen de tu
+                  dispositivo; solo se descarga el modelo.
+                </p>
+              )}
+              {modelStatus.state === "downloading" && (
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-cyan-100">
+                  <div
+                    className="h-full rounded-full bg-cyan-600 transition-all"
+                    style={{ width: `${modelStatus.progress}%` }}
+                  />
+                </div>
+              )}
+              {modelStatus.state === "ready" && (
+                <p>
+                  ✅ Modelo de quitar fondo listo ({MODEL_NAME}). La inferencia es local y
+                  puede tardar varios segundos por imagen.
+                </p>
+              )}
+              {modelStatus.state === "error" && (
+                <div>
+                  <p>⚠️ {modelStatus.error ?? "No se pudo preparar el modelo de quitar fondo."}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetBackgroundModel();
+                      ensureModel().catch(() => {});
+                    }}
+                    className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-700"
+                  >
+                    ↻ Reintentar descarga
+                  </button>
+                </div>
+              )}
+              {modelStatus.state === "idle" && (
+                <p>
+                  🧩 Quitar fondo activado: el modelo ({MODEL_NAME}, {MODEL_SIZE_LABEL}) se
+                  descargará una sola vez al procesar la primera imagen.
+                </p>
+              )}
+            </div>
+          )}
+
           <RenamePanel
             settings={settings}
             onChange={setSettings}
             disabled={processing}
             previewNames={renameInfo.names}
             previewError={renameInfo.error}
+          />
+
+          <PreviewPanel
+            items={items}
+            selectedId={previewSelectedId}
+            onSelect={setPreviewId}
+            settings={settings}
+            processing={processing}
           />
 
           {/* Resumen del lote: cálculo previo, siempre visible */}
@@ -595,11 +693,17 @@ export default function Home() {
         </>
       )}
 
+      <Donations />
+
       <footer className="mt-10 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
         <p>Hecho con Next.js + Canvas API + JSZip. Tus imágenes nunca salen de tu dispositivo.</p>
         <p className="mt-1">
           Limitación conocida: Canvas no puede exportar GIF y AVIF depende del navegador — si
           un formato no está soportado, esa imagen mostrará el error sin romper el resto.
+        </p>
+        <p className="mt-1">
+          Quitar fondo: modelo ISNet general-use int8 (ORMBG, Apache-2.0, de Qin et al. 2022) ·
+          ONNX Runtime Web (MIT). Sin @imgly/background-removal ni RMBG de BRIA.
         </p>
       </footer>
     </main>

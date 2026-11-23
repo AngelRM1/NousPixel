@@ -256,9 +256,15 @@ export async function computeMask(
   bitmap: ImageBitmap,
   crop: { sx: number; sy: number; sw: number; sh: number },
 ): Promise<MaskData> {
-  const ort = ortModule;
+  // OJO: el módulo se lee DESPUÉS de esperar al modelo. Antes se leía
+  // antes del await y la primera llamada, con el modelo aún sin cargar,
+  // siempre fallaba con «El runtime de IA no está cargado» aunque la
+  // descarga acabara de terminar bien: por eso la vista previa no
+  // mostraba el fondo quitado y el lote sí (el lote corre después de
+  // que la precarga del toggle ya dejó el runtime listo).
   const sess = session ?? (await ensureModel());
-  if (!ort) throw new Error("El runtime de IA no está cargado.");
+  const ort = ortModule;
+  if (!ort || !sess) throw new Error("El runtime de IA no está cargado.");
 
   // Región recortada → lienzo 1024×1024.
   const canvas = document.createElement("canvas");

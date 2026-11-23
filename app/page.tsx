@@ -521,6 +521,7 @@ export default function Home() {
               settings={settings}
               processing={processing}
               fill
+              modelStatus={modelStatus}
             />
           )}
         </div>
@@ -713,6 +714,7 @@ export default function Home() {
                     settings={settings}
                     processing={processing}
                     bare
+                    modelStatus={modelStatus}
                   />
                 )}
               </MobileSection>

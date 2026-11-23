@@ -558,6 +558,8 @@ export default function Home() {
             failedItems={failedItems}
             readyCount={readyCount}
             memoryReadyBytes={memoryReadyBytes}
+            removeBackground={settings.removeBackground}
+            modelStatus={modelStatus}
             onAddFiles={addFiles}
             onRemoveItem={removeItem}
             onStart={() => void startProcessing()}
@@ -662,6 +664,8 @@ export default function Home() {
                   failedItems={failedItems}
                   readyCount={readyCount}
                   memoryReadyBytes={memoryReadyBytes}
+                  removeBackground={settings.removeBackground}
+                  modelStatus={modelStatus}
                   onAddFiles={addFiles}
                   onRemoveItem={removeItem}
                   onStart={() => void startProcessing()}
@@ -728,7 +732,11 @@ export default function Home() {
                   disabled={processing || batchSummary.candidates.length === 0 || batchSummary.blocked}
                   className="flex-1 rounded-xl bg-cyan-600 px-6 py-3 text-base font-bold text-white shadow hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {processing ? "Procesando…" : "▶ Iniciar"}
+                  {processing
+                    ? settings.removeBackground
+                      ? "Quitando fondo…"
+                      : "Procesando…"
+                    : "▶ Iniciar"}
                 </button>
                 <button
                   type="button"

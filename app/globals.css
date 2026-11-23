@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+/* Anti-flash móvil (v1.3.1): el script en layout.tsx marca <html> con
+   .np-mobile antes del primer pintado; la rama de escritorio queda oculta
+   hasta que React monta el acordeón. page.tsx sincroniza la clase al
+   cambiar el tamaño de la ventana. */
+html.np-mobile .np-desktop-root {
+  display: none !important;
+}

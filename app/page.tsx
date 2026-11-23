@@ -116,7 +116,11 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
-    const update = () => setIsMobile(mq.matches);
+    const update = () => {
+      setIsMobile(mq.matches);
+      // Mantener la clase anti-flash sincronizada si cambia el tamaño.
+      document.documentElement.classList.toggle("np-mobile", mq.matches);
+    };
     update();
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
@@ -477,7 +481,7 @@ export default function Home() {
       </header>
 
       {!isMobile && (
-        <div className="relative min-h-0 flex-1">
+        <div className="np-desktop-root relative min-h-0 flex-1">
         {/* Escenario central: la vista previa ocupa toda la pantalla */}
         <div
           className={`absolute inset-0 transition-all duration-300 ${leftOpen ? "lg:pl-[364px]" : ""} ${rightOpen ? "lg:pr-[364px]" : ""}`}

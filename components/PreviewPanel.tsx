@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Spinner from "@/components/Spinner";
 import { generatePreview, PREVIEW_MAX_SIDE, type PreviewResult } from "@/lib/preview";
 import { formatBytes, savedPercent, type EditorSettings, type ImageItem } from "@/lib/types";
+import type { ModelStatus } from "@/lib/backgroundRemoval";
 
 type ViewMode = "slider" | "antes" | "despues";
 
@@ -19,12 +20,17 @@ interface Props {
   fill?: boolean;
   /** true en el acordeón móvil: sin tarjeta, borde ni márgenes. */
   bare?: boolean;
+  /** Estado del modelo de quitar fondo: al pasar a «ready» la preview se
+      regenera sola, para que el fondo quitado aparezca sin tener que
+      tocar ningún ajuste. Solo se observa el estado (idle/downloading/
+      ready/error), no el porcentaje, para no regenerar a cada avance. */
+  modelStatus?: ModelStatus;
 }
 
 /** Retraso para regenerar la preview al cambiar la configuración. */
 const PREVIEW_DEBOUNCE_MS = 300;
 
-export default function PreviewPanel({ items, selectedId, onSelect, settings, processing, fill, bare }: Props) {
+export default function PreviewPanel({ items, selectedId, onSelect, settings, processing, fill, bare, modelStatus }: Props) {
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
   const [mode, setMode] = useState<ViewMode>("slider");
   const [pos, setPos] = useState(50);
@@ -95,9 +101,12 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // settings es un objeto nuevo en cada cambio: es justo lo que
-    // queremos observar para regenerar la preview.
+    // queremos observar para regenerar la preview. modelStatus.state
+    // se observa aparte: cuando el modelo de quitar fondo pasa a
+    // «ready», la preview se regenera sola con el fondo ya quitado
+    // (antes, la primera generación fallaba y nada la volvía a lanzar).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id, selected?.file.name, settings, processing]);
+  }, [selected?.id, selected?.file.name, settings, processing, modelStatus?.state]);
 
   if (items.length === 0 || !selected) return null;
 

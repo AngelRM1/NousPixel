@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Spinner from "@/components/Spinner";
 import { generatePreview, PREVIEW_MAX_SIDE, type PreviewResult } from "@/lib/preview";
 import { formatBytes, savedPercent, type EditorSettings, type ImageItem } from "@/lib/types";
 
@@ -227,7 +228,7 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
           {/* Comparador: original a la izquierda, procesada a la derecha */}
           <div
             className={`relative mt-3 w-full cursor-ew-resize touch-none overflow-hidden rounded-lg select-none ${
-              fill ? "min-h-60 flex-1 bg-slate-200" : "h-72 bg-slate-100 sm:h-96"
+              fill ? "min-h-60 flex-1 checkerboard" : "h-72 checkerboard sm:h-96"
             }`}
             onPointerDown={(e) => {
               if (mode !== "slider") return;
@@ -272,6 +273,22 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
             <span className="absolute right-1 top-1 rounded bg-cyan-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
               Después
             </span>
+            {/* Velo sobre el lado «Después» mientras se regenera la preview
+                con quitar fondo (la inferencia tarda varios segundos). */}
+            {updating && !processing && settings.removeBackground && mode !== "antes" && (
+              <div
+                className="absolute top-0 bottom-0 right-0 z-10 flex items-center justify-center bg-white/60"
+                style={mode === "slider" ? { left: `${pos}%` } : { left: "0" }}
+                role="status"
+              >
+                <div className="flex flex-col items-center gap-2 px-2 text-center">
+                  <Spinner size="lg" />
+                  <span className="text-xs font-bold text-cyan-800">
+                    Procesando vista previa…
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {mode === "slider" && (

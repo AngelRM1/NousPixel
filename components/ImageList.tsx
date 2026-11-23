@@ -23,7 +23,7 @@ function CompareView({ item }: { item: ImageItem }) {
   if (!item.resultUrl) return null;
   return (
     <div className="mt-2">
-      <div className="relative h-40 w-full overflow-hidden rounded-lg bg-slate-100 select-none">
+      <div className="relative h-40 w-full overflow-hidden rounded-lg checkerboard select-none">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={item.previewUrl}
@@ -88,7 +88,7 @@ export default function ImageList({ items, onRemove, disabled }: Props) {
                 <img
                   src={item.previewUrl}
                   alt={item.file.name}
-                  className="h-20 w-20 shrink-0 rounded-lg object-cover bg-slate-100"
+                  className="h-20 w-20 shrink-0 rounded-lg object-cover checkerboard"
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-800">{item.file.name}</p>

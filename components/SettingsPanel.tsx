@@ -1,5 +1,13 @@
 "use client";
 
+import Spinner from "@/components/Spinner";
+import {
+  ensureModel,
+  MODEL_NAME,
+  MODEL_SIZE_LABEL,
+  resetBackgroundModel,
+  type ModelStatus,
+} from "@/lib/backgroundRemoval";
 import { LOSSY_FORMATS } from "@/lib/imageProcessor";
 import type {
   CropRatio,
@@ -14,6 +22,8 @@ interface Props {
   settings: EditorSettings;
   onChange: (settings: EditorSettings) => void;
   disabled?: boolean;
+  /** Estado de descarga del modelo de quitar fondo (lo sigue page.tsx). */
+  modelStatus?: ModelStatus;
 }
 
 const FORMATS: { value: OutputFormat; label: string; note: string }[] = [
@@ -64,7 +74,7 @@ function Section({
   );
 }
 
-export default function SettingsPanel({ settings, onChange, disabled }: Props) {
+export default function SettingsPanel({ settings, onChange, disabled, modelStatus }: Props) {
   const set = (patch: Partial<EditorSettings>) => onChange({ ...settings, ...patch });
   const isLossy = LOSSY_FORMATS.includes(settings.format);
   const resize = settings.resize;
@@ -521,6 +531,68 @@ export default function SettingsPanel({ settings, onChange, disabled }: Props) {
             </span>
           </span>
         </label>
+        {/* Loading visible del modelo de quitar fondo, en esta misma sección */}
+        {settings.removeBackground && modelStatus && (
+          <div
+            className={`mt-3 rounded-xl px-4 py-3 text-sm font-medium ${
+              modelStatus.state === "error"
+                ? "bg-red-50 text-red-800"
+                : modelStatus.state === "ready"
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "bg-cyan-50 text-cyan-800"
+            }`}
+            role="status"
+          >
+            {modelStatus.state === "downloading" && (
+              <>
+                <p className="flex items-center gap-2 font-bold">
+                  <Spinner />
+                  Descargando la IA para quitar fondo… {modelStatus.progress} %
+                </p>
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-cyan-100">
+                  <div
+                    className="h-full rounded-full bg-cyan-600 transition-all"
+                    style={{ width: `${modelStatus.progress}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs font-normal">
+                  Solo pasa la primera vez, el modelo queda guardado en tu navegador
+                  ({MODEL_NAME}, {MODEL_SIZE_LABEL}). Las imágenes nunca salen de tu
+                  dispositivo; solo se descarga el modelo.
+                </p>
+              </>
+            )}
+            {modelStatus.state === "ready" && (
+              <p>
+                ✅ Modelo de quitar fondo listo ({MODEL_NAME}). La inferencia es local y
+                puede tardar varios segundos por imagen.
+              </p>
+            )}
+            {modelStatus.state === "error" && (
+              <div>
+                <p>
+                  ⚠️ {modelStatus.error ?? "No se pudo preparar el modelo de quitar fondo."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetBackgroundModel();
+                    ensureModel().catch(() => {});
+                  }}
+                  className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-700"
+                >
+                  ↻ Reintentar descarga
+                </button>
+              </div>
+            )}
+            {modelStatus.state === "idle" && (
+              <p>
+                🧩 Quitar fondo activado: el modelo ({MODEL_NAME}, {MODEL_SIZE_LABEL}) se
+                descargará una sola vez al procesar la primera imagen.
+              </p>
+            )}
+          </div>
+        )}
         {settings.removeBackground && settings.format === "jpeg" && (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
             ⚠️ Con quitar fondo activado, JPG no admite transparencia: la salida será PNG.

@@ -2,6 +2,7 @@
 
 import ImageList from "@/components/ImageList";
 import UploadArea from "@/components/UploadArea";
+import type { ModelStatus } from "@/lib/backgroundRemoval";
 import { formatEstimatedTime, type BatchSummary } from "@/lib/limits";
 import { formatBytes, type ImageItem } from "@/lib/types";
 
@@ -18,6 +19,10 @@ interface Props {
   failedItems: ImageItem[];
   readyCount: number;
   memoryReadyBytes: number;
+  /** true si quitar fondo está activado: el progreso dice «Quitando fondo…». */
+  removeBackground: boolean;
+  /** Estado de descarga del modelo de quitar fondo. */
+  modelStatus: ModelStatus;
   onAddFiles: (files: File[]) => void;
   onRemoveItem: (id: string) => void;
   onStart: () => void;
@@ -49,6 +54,8 @@ export default function ImagesPanelContent({
   failedItems,
   readyCount,
   memoryReadyBytes,
+  removeBackground,
+  modelStatus,
   onAddFiles,
   onRemoveItem,
   onStart,
@@ -198,8 +205,19 @@ export default function ImagesPanelContent({
               <div className="mt-4 rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-cyan-800">
-                    Procesando {progress.done} de {progress.total}… · ⏱{" "}
-                    {elapsedLabel}
+                    {removeBackground && modelStatus.state === "downloading" ? (
+                      <>⬇ Descargando la IA… {modelStatus.progress} %</>
+                    ) : removeBackground ? (
+                      <>
+                        Quitando fondo… {progress.done} de {progress.total} · ⏱{" "}
+                        {elapsedLabel}
+                      </>
+                    ) : (
+                      <>
+                        Procesando {progress.done} de {progress.total}… · ⏱{" "}
+                        {elapsedLabel}
+                      </>
+                    )}
                   </p>
                   <button
                     type="button"
@@ -209,12 +227,28 @@ export default function ImagesPanelContent({
                     ✕ Cancelar
                   </button>
                 </div>
-                <div className="mt-2 h-3 overflow-hidden rounded-full bg-cyan-100">
-                  <div
-                    className="h-full rounded-full bg-cyan-600 transition-all"
-                    style={{ width: `${(progress.done / progress.total) * 100}%` }}
-                  />
-                </div>
+                {removeBackground && modelStatus.state === "downloading" ? (
+                  <>
+                    <div className="mt-2 h-3 overflow-hidden rounded-full bg-cyan-100">
+                      <div
+                        className="h-full rounded-full bg-cyan-600 transition-all"
+                        style={{ width: `${modelStatus.progress}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-cyan-700">
+                      El modelo de quitar fondo aún se está descargando (solo pasa la
+                      primera vez). El procesado empezará en cuanto esté listo; no
+                      cierres la pestaña.
+                    </p>
+                  </>
+                ) : (
+                  <div className="mt-2 h-3 overflow-hidden rounded-full bg-cyan-100">
+                    <div
+                      className="h-full rounded-full bg-cyan-600 transition-all"
+                      style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                    />
+                  </div>
+                )}
                 <p className="mt-2 text-xs text-cyan-700">
                   En memoria para el ZIP: {formatBytes(memoryReadyBytes)} ({readyCount}{" "}
                   resultado
@@ -298,7 +332,11 @@ export default function ImagesPanelContent({
           }
           className="w-full rounded-xl bg-cyan-600 px-6 py-3 text-base font-bold text-white shadow hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {processing ? "Procesando…" : "▶ Iniciar"}
+          {processing
+            ? removeBackground
+              ? "Quitando fondo…"
+              : "Procesando…"
+            : "▶ Iniciar"}
         </button>
         <div className="mt-2 flex gap-2">
           <button

@@ -2,13 +2,7 @@
 
 import RenamePanel from "@/components/RenamePanel";
 import SettingsPanel from "@/components/SettingsPanel";
-import {
-  ensureModel,
-  MODEL_NAME,
-  MODEL_SIZE_LABEL,
-  resetBackgroundModel,
-  type ModelStatus,
-} from "@/lib/backgroundRemoval";
+import type { ModelStatus } from "@/lib/backgroundRemoval";
 import type { EditorSettings, ImageItem } from "@/lib/types";
 
 interface Props {
@@ -60,67 +54,13 @@ export default function SettingsPanelContent({
         ) : (
           <>
             <div className="mt-3">
-              <SettingsPanel settings={settings} onChange={onSettingsChange} disabled={processing} />
+              <SettingsPanel
+                settings={settings}
+                onChange={onSettingsChange}
+                disabled={processing}
+                modelStatus={modelStatus}
+              />
             </div>
-
-            {/* Estado del modelo de quitar fondo (solo si está activado) */}
-            {settings.removeBackground && (
-              <div
-                className={`mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
-                  modelStatus.state === "error"
-                    ? "bg-red-50 text-red-800"
-                    : modelStatus.state === "ready"
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-cyan-50 text-cyan-800"
-                }`}
-                role="status"
-              >
-                {modelStatus.state === "downloading" && (
-                  <p>
-                    ⬇ Descargando el modelo de quitar fondo ({MODEL_NAME},{" "}
-                    {MODEL_SIZE_LABEL}, una sola vez)… {modelStatus.progress} % — las
-                    imágenes nunca salen de tu dispositivo; solo se descarga el modelo.
-                  </p>
-                )}
-                {modelStatus.state === "downloading" && (
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-cyan-100">
-                    <div
-                      className="h-full rounded-full bg-cyan-600 transition-all"
-                      style={{ width: `${modelStatus.progress}%` }}
-                    />
-                  </div>
-                )}
-                {modelStatus.state === "ready" && (
-                  <p>
-                    ✅ Modelo de quitar fondo listo ({MODEL_NAME}). La inferencia es local y
-                    puede tardar varios segundos por imagen.
-                  </p>
-                )}
-                {modelStatus.state === "error" && (
-                  <div>
-                    <p>
-                      ⚠️ {modelStatus.error ?? "No se pudo preparar el modelo de quitar fondo."}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetBackgroundModel();
-                        ensureModel().catch(() => {});
-                      }}
-                      className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-700"
-                    >
-                      ↻ Reintentar descarga
-                    </button>
-                  </div>
-                )}
-                {modelStatus.state === "idle" && (
-                  <p>
-                    🧩 Quitar fondo activado: el modelo ({MODEL_NAME}, {MODEL_SIZE_LABEL}) se
-                    descargará una sola vez al procesar la primera imagen.
-                  </p>
-                )}
-              </div>
-            )}
 
             <RenamePanel
               settings={settings}

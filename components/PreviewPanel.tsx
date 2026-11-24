@@ -25,12 +25,14 @@ interface Props {
       tocar ningún ajuste. Solo se observa el estado (idle/downloading/
       ready/error), no el porcentaje, para no regenerar a cada avance. */
   modelStatus?: ModelStatus;
+  /** Eliminar una imagen de la lista (botón × en cada miniatura). */
+  onRemove?: (id: string) => void;
 }
 
 /** Retraso para regenerar la preview al cambiar la configuración. */
 const PREVIEW_DEBOUNCE_MS = 300;
 
-export default function PreviewPanel({ items, selectedId, onSelect, settings, processing, fill, bare, modelStatus }: Props) {
+export default function PreviewPanel({ items, selectedId, onSelect, settings, processing, fill, bare, modelStatus, onRemove }: Props) {
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
   const [mode, setMode] = useState<ViewMode>("slider");
   const [pos, setPos] = useState(50);
@@ -157,24 +159,37 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
         aria-label="Imágenes cargadas: elige una para la vista previa"
       >
         {items.map((item, idx) => (
-          <button
-            key={item.id}
-            type="button"
-            role="option"
-            aria-selected={item.id === selected.id}
-            onClick={() => onSelect(item.id)}
-            title={`${idx + 1} · ${item.file.name}`}
-            className={`shrink-0 rounded-lg p-0.5 ring-2 ${
-              item.id === selected.id ? "ring-cyan-600" : "ring-transparent hover:ring-slate-300"
-            }`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={item.previewUrl}
-              alt={`${item.file.name} (miniatura ${idx + 1})`}
-              className="h-14 w-14 rounded-md bg-slate-100 object-cover"
-            />
-          </button>
+          <div key={item.id} className="relative shrink-0">
+            <button
+              type="button"
+              role="option"
+              aria-selected={item.id === selected.id}
+              onClick={() => onSelect(item.id)}
+              title={`${idx + 1} · ${item.file.name}`}
+              className={`rounded-lg p-0.5 ring-2 ${
+                item.id === selected.id ? "ring-cyan-600" : "ring-transparent hover:ring-slate-300"
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={item.previewUrl}
+                alt={`${item.file.name} (miniatura ${idx + 1})`}
+                className="h-14 w-14 rounded-md bg-slate-100 object-cover"
+              />
+            </button>
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(item.id)}
+                disabled={processing}
+                aria-label={`Eliminar ${item.file.name}`}
+                title={`Eliminar ${item.file.name}`}
+                className="absolute -top-1.5 -right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-bold text-red-600 shadow ring-1 ring-slate-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         ))}
       </div>
       <p className="mt-1 truncate text-sm font-semibold text-slate-800">
@@ -234,7 +249,13 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
             ))}
           </div>
 
-          {/* Comparador: original a la izquierda, procesada a la derecha */}
+          {/* Comparador: original a la derecha, procesada a la izquierda.
+              OJO: cada lado muestra SOLO su imagen, sobre el damero del
+              contenedor. Antes, la original se dibujaba siempre debajo y
+              la procesada encima: donde la procesada era transparente se
+              veía la original (fondo blanco) en vez del damero, así que
+              quitar fondo parecía no hacer nada en el preview aunque la
+              descarga sí saliera transparente. */}
           <div
             className={`relative mt-3 w-full cursor-ew-resize touch-none overflow-hidden rounded-lg select-none ${
               fill ? "min-h-60 flex-1 checkerboard" : "h-72 checkerboard sm:h-96"
@@ -248,13 +269,20 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
               setPosFromPointer(e);
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={selected.previewUrl}
-              alt={`Original de ${selected.file.name}`}
-              className="absolute inset-0 h-full w-full object-contain"
-              draggable={false}
-            />
+            {mode !== "despues" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={selected.previewUrl}
+                alt={`Original de ${selected.file.name}`}
+                className="absolute inset-0 h-full w-full object-contain"
+                style={
+                  mode === "slider"
+                    ? { clipPath: `inset(0 0 0 ${pos}%)` }
+                    : undefined
+                }
+                draggable={false}
+              />
+            )}
             {mode !== "antes" && (
               // eslint-disable-next-line @next/next/no-img-element
               <img

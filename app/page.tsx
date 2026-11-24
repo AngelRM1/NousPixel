@@ -522,6 +522,7 @@ export default function Home() {
               processing={processing}
               fill
               modelStatus={modelStatus}
+              onRemove={removeItem}
             />
           )}
         </div>
@@ -641,7 +642,7 @@ export default function Home() {
       {isMobile && (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-3 py-3">
+            <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-3 pt-3 pb-24">
               <MobileSection
                 title="🖼 Tus imágenes"
                 badge={
@@ -715,6 +716,7 @@ export default function Home() {
                     processing={processing}
                     bare
                     modelStatus={modelStatus}
+                    onRemove={removeItem}
                   />
                 )}
               </MobileSection>
@@ -726,7 +728,7 @@ export default function Home() {
           </div>
 
           {items.length > 0 && (
-            <div className="shrink-0 border-t border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur">
+            <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur">
               <div className="mx-auto flex max-w-2xl gap-2">
                 <button
                   type="button"

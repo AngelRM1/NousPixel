@@ -57,14 +57,20 @@ const labelCls = "mb-1 block text-sm font-semibold text-slate-700";
 function Section({
   title,
   hint,
+  onToggle,
   children,
 }: {
   title: string;
   hint?: string;
+  /** Se avisa al abrir/cerrar el colapsable (para precargar, p. ej.). */
+  onToggle?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
   return (
-    <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+    <details
+      className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+      onToggle={(e) => onToggle?.(e.currentTarget.open)}
+    >
       <summary className="cursor-pointer text-sm font-bold text-slate-800">
         {title}
         {hint && <span className="ml-2 font-normal text-slate-500">{hint}</span>}
@@ -511,7 +517,20 @@ export default function SettingsPanel({ settings, onChange, disabled, modelStatu
         </div>
       </Section>
 
-      <Section title="🧩 Quitar fondo" hint="Desactivado por defecto — IA en tu navegador">
+      <Section
+        title="🧩 Quitar fondo"
+        hint="Desactivado por defecto — IA en tu navegador"
+        onToggle={(open) => {
+          // Al abrir el colapsable, las herramientas de IA se precargan
+          // en segundo plano: así, cuando el usuario active la casilla,
+          // el modelo ya está listo (o casi) y no hay que esperar la
+          // descarga en ese momento. Solo se descarga una vez; después
+          // queda guardado en el navegador.
+          if (open && modelStatus?.state === "idle") {
+            void ensureModel().catch(() => {});
+          }
+        }}
+      >
         <label className="flex items-start gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -531,37 +550,44 @@ export default function SettingsPanel({ settings, onChange, disabled, modelStatu
             </span>
           </span>
         </label>
-        {/* Loading visible del modelo de quitar fondo, en esta misma sección */}
-        {settings.removeBackground && modelStatus && (
-          <div
-            className={`mt-3 rounded-xl px-4 py-3 text-sm font-medium ${
-              modelStatus.state === "error"
-                ? "bg-red-50 text-red-800"
-                : modelStatus.state === "ready"
-                  ? "bg-emerald-50 text-emerald-800"
-                  : "bg-cyan-50 text-cyan-800"
-            }`}
-            role="status"
-          >
-            {modelStatus.state === "downloading" && (
-              <>
-                <p className="flex items-center gap-2 font-bold">
-                  <Spinner />
-                  Descargando la IA para quitar fondo… {modelStatus.progress} %
-                </p>
-                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-cyan-100">
-                  <div
-                    className="h-full rounded-full bg-cyan-600 transition-all"
-                    style={{ width: `${modelStatus.progress}%` }}
-                  />
-                </div>
-                <p className="mt-2 text-xs font-normal">
-                  Solo pasa la primera vez, el modelo queda guardado en tu navegador
-                  ({MODEL_NAME}, {MODEL_SIZE_LABEL}). Las imágenes nunca salen de tu
-                  dispositivo; solo se descarga el modelo.
-                </p>
-              </>
-            )}
+        {/* Estado de las herramientas de quitar fondo. Se muestra al
+            activar la casilla y también durante la precarga al abrir el
+            colapsable, para que el usuario vea que ya se están cargando. */}
+        {modelStatus &&
+          (settings.removeBackground ||
+            modelStatus.state === "downloading" ||
+            modelStatus.state === "ready" ||
+            modelStatus.state === "error") && (
+            <div
+              className={`mt-3 rounded-xl px-4 py-3 text-sm font-medium ${
+                modelStatus.state === "error"
+                  ? "bg-red-50 text-red-800"
+                  : modelStatus.state === "ready"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-cyan-50 text-cyan-800"
+              }`}
+              role="status"
+            >
+              {modelStatus.state === "downloading" && (
+                <>
+                  <p className="flex items-center gap-2 font-bold">
+                    <Spinner />
+                    Cargando herramientas de procesado de imágenes con IA…{" "}
+                    {modelStatus.progress} %
+                  </p>
+                  <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-cyan-100">
+                    <div
+                      className="h-full rounded-full bg-cyan-600 transition-all"
+                      style={{ width: `${modelStatus.progress}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs font-normal">
+                    Solo pasa la primera vez, el modelo queda guardado en tu navegador
+                    ({MODEL_NAME}, {MODEL_SIZE_LABEL}). Las imágenes nunca salen de tu
+                    dispositivo; solo se descarga el modelo.
+                  </p>
+                </>
+              )}
             {modelStatus.state === "ready" && (
               <p>
                 ✅ Modelo de quitar fondo listo ({MODEL_NAME}). La inferencia es local y

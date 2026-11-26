@@ -249,13 +249,11 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
             ))}
           </div>
 
-          {/* Comparador: original a la derecha, procesada a la izquierda.
-              OJO: cada lado muestra SOLO su imagen, sobre el damero del
-              contenedor. Antes, la original se dibujaba siempre debajo y
-              la procesada encima: donde la procesada era transparente se
-              veía la original (fondo blanco) en vez del damero, así que
-              quitar fondo parecía no hacer nada en el preview aunque la
-              descarga sí saliera transparente. */}
+          {/* Comparador: original a la izquierda (Antes), procesada a la
+              derecha (Después), como indican las etiquetas. Antes estaban
+              al revés: la procesada quedaba a la izquierda y la original
+              a la derecha, así que con el fondo quitado el lado «Antes»
+              mostraba la transparencia y el «Después» el fondo blanco. */}
           <div
             className={`relative mt-3 w-full cursor-ew-resize touch-none overflow-hidden rounded-lg select-none ${
               fill ? "min-h-60 flex-1 checkerboard" : "h-72 checkerboard sm:h-96"
@@ -277,7 +275,7 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
                 className="absolute inset-0 h-full w-full object-contain"
                 style={
                   mode === "slider"
-                    ? { clipPath: `inset(0 0 0 ${pos}%)` }
+                    ? { clipPath: `inset(0 ${100 - pos}% 0 0)` }
                     : undefined
                 }
                 draggable={false}
@@ -291,7 +289,7 @@ export default function PreviewPanel({ items, selectedId, onSelect, settings, pr
                 className="absolute inset-0 h-full w-full object-contain"
                 style={
                   mode === "slider"
-                    ? { clipPath: `inset(0 ${100 - pos}% 0 0)` }
+                    ? { clipPath: `inset(0 0 0 ${pos}%)` }
                     : undefined
                 }
                 draggable={false}
